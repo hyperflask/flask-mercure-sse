@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<script src="https://unpkg.com/htmx.org@1.9.11"></script>
+<script src="https://unpkg.com/htmx.org@1.9.11/dist/ext/sse.js"></script>
+<form hx-post="{{url_for('publish')}}" hx-swap="none">
+    <fieldset>
+        <legend>Send</legend>
+        <p><textarea name="message" placeholder="Message"></textarea></p>
+        <p>
+            <label>
+                <input type="checkbox" name="private" value="on" {% if "mercure" not in session %}disabled{% endif %}>
+                Logged in user only {% if "mercure" not in session %}(<a href="{{url_for('login')}}">login</a>){% endif %}
+            </label>
+        </p>
+        <button type="submit">Send</button>
+    </fieldset>
+</form>
+<div hx-ext="sse" sse-connect="{{ mercure_hub_url('messages') }}" sse-swap="message" hx-swap="afterbegin"></div>
