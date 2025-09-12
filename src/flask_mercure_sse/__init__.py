@@ -7,6 +7,7 @@ import requests
 import jwt
 import urllib.parse
 import click
+import urllib.parse
 
 
 @dataclass
@@ -97,14 +98,17 @@ class MercureSSE:
         if not jwt:
             jwt = self.create_subscription_jwt(topics or ["*"])
 
-        if self.hub_url:
-            path = self.hub_url
-            secure = True
+        if self.state.hub_url:
+            parts = urllib.parse.urlparse(self.state.hub_url)
+            domain = parts.hostname
+            path = parts.path
+            secure = parts.scheme == "https"
         else:
+            domain = None
             path = "/.well-known/mercure"
             secure = not self.app.debug
 
-        response.set_cookie(self.state.authz_cookie_name, jwt,
+        response.set_cookie(self.state.authz_cookie_name, jwt, domain=domain,
                             path=path, httponly=True, secure=secure, samesite="strict")
         return response
     

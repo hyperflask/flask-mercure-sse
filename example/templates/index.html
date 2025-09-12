@@ -7,8 +7,8 @@
         <p><textarea name="message" placeholder="Message"></textarea></p>
         <p>
             <label>
-                <input type="checkbox" name="private" value="on" {% if "mercure" not in session %}disabled{% endif %}>
-                Logged in user only {% if "mercure" not in session %}(<a href="{{url_for('login')}}">login</a>){% endif %}
+                <input type="checkbox" name="private" value="on">
+                Logged in user only (<a href="{{url_for('login')}}">login</a>)
             </label>
         </p>
         <button type="submit">Send</button>

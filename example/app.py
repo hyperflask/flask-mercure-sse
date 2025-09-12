@@ -21,6 +21,7 @@ def publish():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        mercure.set_authz_session(subscribe=["messages"])
-        return redirect(url_for("index"))
+        r = redirect(url_for("index"))
+        mercure.set_authz_cookie(r, topics=["messages"])
+        return r
     return render_template("login.html")

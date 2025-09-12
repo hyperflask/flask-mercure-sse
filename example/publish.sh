@@ -5,5 +5,5 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-jwt=$(flask mercure publisher-jwt)
-flask mercure publish --hub http://localhost:5000/.well-known/mercure --jwt "$jwt" "messages" "<p>$1</p>"
+jwt=$(uv run flask mercure publisher-jwt)
+uv run flask mercure publish --hub http://localhost:5000/.well-known/mercure --jwt "$jwt" "messages" "<p>$1</p>"
