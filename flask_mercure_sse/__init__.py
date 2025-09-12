@@ -1,6 +1,6 @@
 from .hub import Broker, hub_blueprint
 from dataclasses import dataclass
-from flask import current_app, url_for, session
+from flask import current_app, url_for
 from flask.cli import AppGroup
 import typing as t
 import requests
@@ -50,7 +50,8 @@ class MercureSSE:
         )
 
         app.extensions["mercure_sse"] = state
-        app.jinja_env.globals.update(mercure_hub_url=mercure_hub_url,
+        app.jinja_env.globals.update(mercure_hub_url=self.hub_url,
+                                     mercure_authentified_hub_url=self.authentified_hub_url,
                                      mercure_subscriber_jwt=self.create_subscription_jwt)
         if not hub_url:
             app.register_blueprint(hub_blueprint)
@@ -107,8 +108,23 @@ class MercureSSE:
                             path=path, httponly=True, secure=secure, samesite="strict")
         return response
     
-    def set_authz_session(self, subscribe=None, publish=None):
-        session["mercure"] = {"subscribe": subscribe, "publish": publish}
+    def hub_url(self, topics=None, subscriber_jwt=None):
+        url = self.state.hub_url
+        if not url:
+            url = url_for("mercure_hub.subscribe")
+
+        params = []
+        if topics:
+            if not isinstance(topics, (list, tuple)):
+                topics = (topics,)
+            params.extend(("topic", t) for t in topics)
+        if subscriber_jwt:
+            params.append(("authorization", subscriber_jwt))
+
+        return url + "?" + urllib.parse.urlencode(params, doseq=True)
+    
+    def authentified_hub_url(self, topics=None):
+        return self.hub_url(topics, self.create_subscription_jwt(topics or ["*"]))
 
     def publish(self, topic, data, private=False, id=None, type=None, retry=None, jwt=None, hub_url=None):
         if not hub_url:
@@ -134,27 +150,19 @@ class MercureSSE:
         
         r = requests.post(hub_url, data=data, headers={"Authorization": f"Bearer {jwt}"})
         return r.text
-    
 
-def mercure_hub_url(topics, subscriber_jwt=None):
-    state = current_app.extensions["mercure_sse"]
-
-    url = state.hub_url
-    if not url:
-        url = url_for("mercure_hub.subscribe")
-
-    params = [("topic", topics)]
-    if subscriber_jwt:
-        params.append(("authorization", subscriber_jwt))
-
-    return url + "?" + urllib.parse.urlencode(params, doseq=True)
+    def publish_signal(self, *args, **kwargs):
+        kwargs["sse"] = self
+        publish_signal(*args, **kwargs)
 
 
 def mercure_publish(topic, data, **kwargs):
     return current_app.extensions["mercure_sse"].instance.publish(topic, data, **kwargs)
 
 
-def publish_signal(signal, topic=None, data=None, signal_name_as_type=False, signal_kwargs_as_data=False, marshaler=None, callback=None, **publish_kwargs):
+def publish_signal(signal, topic=None, data=None, signal_name_as_type=False, signal_kwargs_as_data=False, marshaler=None, callback=None, sse=None, **publish_kwargs):
+    if not sse:
+        sse = current_app.extensions["mercure_sse"].instance
     def listener(sender, **kwargs):
         _data = data
         if signal_kwargs_as_data:
@@ -163,17 +171,14 @@ def publish_signal(signal, topic=None, data=None, signal_name_as_type=False, sig
         publish_kwargs["data"] = marshaler(_data) if marshaler else _data
         if signal_name_as_type:
             publish_kwargs["type"] = signal.name
-        if hasattr(sender, "__mercure_publish__"):
-            publish_kwargs.update(sender.__mercure_publish__)
+        sender_kwargs = getattr(sender, "__mercure_publish__", None)
+        if sender_kwargs:
+            publish_kwargs.update(sender_kwargs)
         if callback:
-            callback(publish_kwargs)
+            if callback(publish_kwargs) is False:
+                return
         if not publish_kwargs.get("topic"):
             publish_kwargs["topic"] = signal.name
-        current_app.extensions["mercure_sse"].instance.publish(**publish_kwargs)
+        sse.publish(**publish_kwargs)
 
     signal.connect(listener, weak=False)
-
-
-def publish_signal_in_topic(signal, topic=None, **kwargs):
-    kwargs["signal_name_as_type"] = True
-    return publish_signal(signal, topic, **kwargs)

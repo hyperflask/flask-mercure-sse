@@ -66,8 +66,6 @@ def publish():
     if not claim:
         abort(403)
 
-    print(claim)
-
     topic = request.form["topic"]
     allowed = False
     for topic_selector in claim.get("publish", []):
@@ -96,8 +94,6 @@ def get_authorization_jwt(key):
         auth_value = request.cookies[cookie_name]
     elif request.args.get("authorization"):
         auth_value = request.args["authorization"]
-    elif session.get("mercure"):
-        return session["mercure"]
     if auth_value:
         return jwt.decode(auth_value, getattr(current_app.extensions["mercure"], key), ["HS256"]).get("mercure", {})
     

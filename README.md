@@ -43,7 +43,7 @@ const es = new EventSource("{{ mercure_hub_url('topic') }})");
 
 The built-in hub is for **development only** as it is not scalable at all.
 
-It implements the all the required part of the Mercure specification including authorization. subscriptions are not implemented.
+It implements all the required part of the Mercure specification including authorization. Subscriptions are not implemented.
 
 ## Configuration
 
@@ -66,6 +66,7 @@ Publish privately using `private=True` in `publish()`.
 Provide the authorization JWT to the frontend:
 
  - Use `mercure_hub_url(topics, "SUBSCRIBER_JWT")` to generate subscription urls with the `authorization` parameter.
+ - Use `mercure_authentified_hub_url(topics)` to generate subscription urls using a subscriber jwt generated using `mercure_subscriber_jwt()`.
  - Use `MercureSSE.set_authz_cookie(response, jwt="SUBSCRIBER_JWT")` to define the `mercureAuthorization` cookie.
 
 Use `mercure_subscriber_jwt(topics)` in templates to generate a JWT.
@@ -82,9 +83,19 @@ To authorize subscribers:
 
  - Pass the JWT to `mercure_hub_url()` in templates like external hubs
  - Use `MercureSSE.set_authz_cookie(response, topics)` to define the `mercureAuthorization` cookie.
- - Use `MercureSSE.set_authz_session(topics)` to define the authorization via the session
 
-When publishing via HTTP is allowed `app.extensions["mercure"].publisher_jwt` as the authorization JWT.
+When publishing via HTTP is allowed, `app.extensions["mercure"].publisher_jwt` is used as the authorization JWT.
+
+## Using signals as event sources
+
+Use `MercureSSE.publish_signal(signal)` to publish an event each time the signal is dispatched
+
+```py
+my_event = signal('my-event')
+mercure.publish_signal(my_event) # topic is the event name
+```
+
+Check out the parameters of `publish_signal()` for options when handling the event.
 
 ## CLI
 
