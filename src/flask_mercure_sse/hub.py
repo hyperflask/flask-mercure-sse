@@ -116,7 +116,5 @@ def format_sse_msg(data, id=None, type=None, retry=None):
         msg.append(f"id: {id}")
     if retry:
         msg.append(f"retry: {retry}")
-    if not isinstance(data, str):
-        data = json.dumps(data)
-    msg.append(f"data: {data}")
+    msg.extend(f"data: {line}" for line in data.splitlines())
     return "\n".join(msg) + "\n\n"
