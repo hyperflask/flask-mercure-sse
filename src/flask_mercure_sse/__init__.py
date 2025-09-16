@@ -1,6 +1,6 @@
 from .hub import Broker, hub_blueprint
 from dataclasses import dataclass
-from flask import current_app, url_for
+from flask import current_app, url_for, json
 from flask.cli import AppGroup
 import typing as t
 import requests
@@ -92,7 +92,9 @@ class MercureSSE:
         return jwt.encode({"mercure": {"publish": publish, "subscribe": subscribe}}, key)
     
     def create_subscription_jwt(self, topics):
-        return self.create_jwt("subscriber_secret_key", subscribe=topics)
+        if not isinstance(topics, (list, tuple)):
+            topics = (topics,)
+        return self.create_jwt("subscriber_secret_key", subscribe=list(map(as_topic, topics)))
     
     def set_authz_cookie(self, response, topics=None, jwt=None):
         if not jwt:
@@ -121,7 +123,7 @@ class MercureSSE:
         if topics:
             if not isinstance(topics, (list, tuple)):
                 topics = (topics,)
-            params.extend(("topic", t) for t in topics)
+            params.extend(("topic", as_topic(t)) for t in topics)
         if subscriber_jwt:
             params.append(("authorization", subscriber_jwt))
 
@@ -130,17 +132,30 @@ class MercureSSE:
     def authentified_hub_url(self, topics=None):
         return self.hub_url(topics, self.create_subscription_jwt(topics or ["*"]))
 
-    def publish(self, topic, data, private=False, id=None, type=None, retry=None, jwt=None, hub_url=None):
+    def publish(self, topic, data=None, private=False, id=None, type=None, retry=None, jwt=None, hub_url=None):
         if not hub_url:
             hub_url = self.state.hub_url
         if not jwt:
             jwt = self.state.publisher_jwt
 
+        if data is None:
+            if hasattr(topic, "__mercure_sse__"):
+                topic, data = topic.__mercure__()
+            else:
+                data = topic
+                if not hasattr(topic, "__mercure_sse_topic__"):
+                    topic = topic.__class__.__name__
+
+        if hasattr(data, "__mercure_sse_data__"):
+            data = data.__mercure_sse_data__()
+        elif not isinstance(data, (str, bytes)):
+            data = json.dumps(data)
+
         if not hub_url and self.state.broker:
-            return self.state.broker.publish(topic, data, private, id, type, retry)
+            return self.state.broker.publish(as_topic(topic), data, private, id, type, retry)
         
         data = {
-            "topic": topic,
+            "topic": as_topic(topic),
             "data": data
         }
         if private:
@@ -160,7 +175,7 @@ class MercureSSE:
         publish_signal(*args, **kwargs)
 
 
-def mercure_publish(topic, data, **kwargs):
+def mercure_publish(topic, data=None, **kwargs):
     return current_app.extensions["mercure_sse"].instance.publish(topic, data, **kwargs)
 
 
@@ -186,3 +201,10 @@ def publish_signal(signal, topic=None, data=None, signal_name_as_type=False, sig
         sse.publish(**publish_kwargs)
 
     signal.connect(listener, weak=False)
+
+
+def as_topic(obj):
+    topic = getattr(obj, "__mercure_sse_topic__", None)
+    if topic:
+        return topic
+    return str(obj)
