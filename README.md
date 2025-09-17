@@ -52,6 +52,7 @@ It implements all the required part of the Mercure specification including autho
 | MERCURE_HUB_URL | External hub url | None |
 | MERCURE_PUBLISHER_JWT | The authorization JWT to publish on external hubs | Required when hub url is provided |
 | MERCURE_AUTHZ_COOKIE_NAME | Authorization cookie name | mercureAuthorization |
+| MERCURE_TYPE_IS_TOPIC | Whether to auto set type to topic name when no type is provided | False |
 | MERCURE_HUB_ALLOW_PUBLISH | Whether to allow publishing via HTTP with the built-in hub | False |
 | MERCURE_HUB_ALLOW_ANONYMOUS | Whether to allow anonymous subscribers to connect | True |
 | MERCURE_SUBSCRIBER_SECRET_KEY | Secret key to generate subscriber JWTs | app.config["SECRET_KEY"] |

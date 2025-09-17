@@ -8,6 +8,7 @@ import jwt
 import urllib.parse
 import click
 import urllib.parse
+import os
 
 
 @dataclass
@@ -16,6 +17,7 @@ class MercureSSEState:
     hub_url: str
     publisher_jwt: str
     authz_cookie_name: str
+    type_is_topic: bool
     hub_allow_publish: bool # whether to allow publishing via the built-in hub
     hub_allow_anonymous: bool # whether to allow anonymous subscribers on the built-in hub
     subscriber_secret_key: t.Optional[str] = None
@@ -29,11 +31,12 @@ class MercureSSE:
             self.init_app(app, **kwargs)
 
     def init_app(self, app, hub_url=None, publisher_jwt=None, subscriber_secret_key=None, publisher_secret_key=None,
-                 hub_allow_publish=False, hub_allow_anonymous=True, authz_cookie_name="mercureAuthorization"):
+                 hub_allow_publish=False, hub_allow_anonymous=True, authz_cookie_name="mercureAuthorization",
+                 type_is_topic=False):
         if not subscriber_secret_key:
-            subscriber_secret_key = app.config["SECRET_KEY"]
+            subscriber_secret_key = os.environ.get("MERCURE_SUBSCRIBER_JWT_KEY", app.config["SECRET_KEY"])
         if not publisher_secret_key:
-            publisher_secret_key = app.config["SECRET_KEY"]
+            publisher_secret_key = os.environ.get("MERCURE_PUBLISHER_JWT_KEY", app.config["SECRET_KEY"])
         if not publisher_jwt and publisher_secret_key:
             publisher_jwt = jwt.encode({"mercure": {"publish": ["*"]}}, publisher_secret_key)
 
@@ -43,6 +46,7 @@ class MercureSSE:
             hub_url=app.config.get("MERCURE_HUB_URL", hub_url),
             publisher_jwt=app.config.get("MERCURE_PUBLISHER_JWT", publisher_jwt),
             authz_cookie_name=app.config.get("MERCURE_AUTHZ_COOKIE_NAME", authz_cookie_name),
+            type_is_topic=app.config.get("MERCURE_TYPE_IS_TOPIC", type_is_topic),
             hub_allow_publish=app.config.get("MERCURE_HUB_ALLOW_PUBLISH", hub_allow_publish),
             hub_allow_anonymous=app.config.get("MERCURE_HUB_ALLOW_ANONYMOUS", hub_allow_anonymous),
             subscriber_secret_key=app.config.get("MERCURE_SUBSCRIBER_SECRET_KEY", subscriber_secret_key),
@@ -53,7 +57,8 @@ class MercureSSE:
         app.extensions["mercure_sse"] = state
         app.jinja_env.globals.update(mercure_hub_url=self.hub_url,
                                      mercure_authentified_hub_url=self.authentified_hub_url,
-                                     mercure_subscriber_jwt=self.create_subscription_jwt)
+                                     mercure_subscriber_jwt=self.create_subscription_jwt,
+                                     mercure_topic=as_topic)
         if not hub_url:
             app.register_blueprint(hub_blueprint)
 
@@ -151,11 +156,15 @@ class MercureSSE:
         elif not isinstance(data, (str, bytes)):
             data = json.dumps(data)
 
+        topic = as_topic(topic)
+        if type is True or (type is None and self.state.type_is_topic):
+            type = topic
+
         if not hub_url and self.state.broker:
-            return self.state.broker.publish(as_topic(topic), data, private, id, type, retry)
+            return self.state.broker.publish(topic, data, private, id, type, retry)
         
         data = {
-            "topic": as_topic(topic),
+            "topic": topic,
             "data": data
         }
         if private:
