@@ -4,11 +4,18 @@
 <form hx-post="{{url_for('publish')}}" hx-swap="none">
     <fieldset>
         <legend>Send</legend>
+        <p>
+            {% if username %}
+                <strong>Logged in as {{ username }}</strong> (<a href="{{url_for('logout')}}">logout</a>)
+            {% else %}
+                <strong>Not logged in !</strong> (<a href="{{url_for('login')}}">login to send privately</a>)
+            {% endif %}
+        </p>
         <p><textarea name="message" placeholder="Message"></textarea></p>
         <p>
             <label>
-                <input type="checkbox" name="private" value="on">
-                Logged in user only (<a href="{{url_for('login')}}">login</a>)
+                <input type="checkbox" name="private" value="on" {% if not username %}disabled{% endif %}>
+                Logged in user only
             </label>
         </p>
         <button type="submit">Send</button>

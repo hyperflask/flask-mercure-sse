@@ -2,9 +2,10 @@
 
 Provide push capabilities using server-sent events to your Flask apps. Based on the [Mercure](https://mercure.rocks) protocol.
 
- - Built-in hub for development
- - Use any external Mercure hub
- - Use external hub like the [Mercure.rocks hub](https://mercure.rocks/docs/hub/install) for production and scaling
+ - Get started in seconds
+ - Full spec implementation
+ - Built-in hub
+ - Use any external Mercure hub (like the [Mercure.rocks hub](https://mercure.rocks/docs/hub/install))
 
 ## Installation
 
@@ -39,12 +40,6 @@ const es = new EventSource("{{ mercure_hub_url('topic') }})");
 </script>
 ```
 
-## About the built-in hub
-
-The built-in hub is for **development only** as it is not scalable at all.
-
-It implements all the required part of the Mercure specification including authorization. Subscriptions are not implemented.
-
 ## Configuration
 
 | Key | Description | Default |
@@ -53,8 +48,11 @@ It implements all the required part of the Mercure specification including autho
 | MERCURE_PUBLISHER_JWT | The authorization JWT to publish on external hubs | Required when hub url is provided |
 | MERCURE_AUTHZ_COOKIE_NAME | Authorization cookie name | mercureAuthorization |
 | MERCURE_TYPE_IS_TOPIC | Whether to auto set type to topic name when no type is provided | False |
-| MERCURE_HUB_ALLOW_PUBLISH | Whether to allow publishing via HTTP with the built-in hub | False |
+| MERCURE_HUB_ALLOW_PUBLISH | Whether to allow publishing via HTTP with the built-in hub when embedded | False |
 | MERCURE_HUB_ALLOW_ANONYMOUS | Whether to allow anonymous subscribers to connect | True |
+| MERCURE_HUB_SUBSCRIPTIONS | Whether to enable the [Mercure subscriptions API](https://mercure.rocks/spec#active-subscriptions) | True |
+| MERCURE_HUB_KEEPALIVE_INTERVAL | Interval in secs between ping messages to ensure the connection is alive, 0 to disable | 15
+| MERCURE_HUB_RECONCILIATION_LENGTH | Number of messages to keep across all topics for [reconciliation](https://mercure.rocks/spec#reconciliation) | 500
 | MERCURE_SUBSCRIBER_SECRET_KEY | Secret key to generate subscriber JWTs | app.config["SECRET_KEY"] |
 | MERCURE_PUBLISHER_SECRET_KEY | Secret key to generate publisher JWTs | app.config["SECRET_KEY"] |
 
@@ -62,30 +60,69 @@ It implements all the required part of the Mercure specification including autho
 
 Publish privately using `private=True` in `publish()`.
 
-### Using external hubs
+Use `MercureSSE.create_subscription_jwt(topics)` or `mercure_subscriber_jwt(topics)` in templates to generate a JWT. Remember to set a `MERCURE_SUBSCRIBER_SECRET_KEY` or the app's secret key will be used.
 
-Provide the authorization JWT to the frontend:
+Pass the subscriber JWT to the hub:
 
  - Use `mercure_hub_url(topics, "SUBSCRIBER_JWT")` to generate subscription urls with the `authorization` parameter.
  - Use `mercure_authentified_hub_url(topics)` to generate subscription urls using a subscriber jwt generated using `mercure_subscriber_jwt()`.
- - Use `MercureSSE.set_authz_cookie(response, jwt="SUBSCRIBER_JWT")` to define the `mercureAuthorization` cookie.
+ - Use `MercureSSE.set_authz_cookie(response, jwt="SUBSCRIBER_JWT")` to define the `mercureAuthorization` cookie (if `jwt` is omitted, `mercure_subscriber_jwt()` is used).
 
-Use `mercure_subscriber_jwt(topics)` in templates to generate a JWT.
+## Subscriptions
 
-### Using the built-in hub
+Track subscriptions using [Mercure subscriptions API](https://mercure.rocks/spec#active-subscriptions).
+
+Provide a payload when creating JWTs:
+
+```py
+mercure = MercureSSE(app)
+@mercure.payload_getter
+def get_mercure_payload(topics):
+    return {'user_id': current_user.id}
+```
+
+Check whether a subscription exists:
+
+```py
+mercure.is_connected(topic, user_id=ID) # keyword arguments are payload filters
+```
+
+List all subscriptions:
+
+```py
+subs = mercure.get_subscriptions(topic) # returns the parsed JSON response of the subscriptions endpoint
+```
+
+## Built-in hub
+
+The built-in hub can be used in 2 modes:
+
+ - Embedded in your normal flask app. This is for **development only** as it is not scalable at all.
+ - As a standalone server using gevent
+
+It implements the full specification.
+
+### In development
 
 First, ensure that a secret key is defined in your app config.
 
-By default, publishing is not possible via the HTTP api for security reason. You will only need to publish internally using `MercureSSE.publish()`.
+By default, publishing is not possible via the HTTP api for security reasons. You will only be able to publish internally using `MercureSSE.publish()`.
 
-Create authorization JWT for subscribers using `MercureSSE.create_subscription_jwt(topics)`.
+### As standalone server
 
-To authorize subscribers:
+Run the standalone server: `python -m flask_mercure_sse.server --subscriber-secret SECRET --publisher-secret SECRET`
 
- - Pass the JWT to `mercure_hub_url()` in templates like external hubs
- - Use `MercureSSE.set_authz_cookie(response, topics)` to define the `mercureAuthorization` cookie.
+This will start the server on port 5500. Grab the provided publisher JWT.
 
-When publishing via HTTP is allowed, `app.extensions["mercure"].publisher_jwt` is used as the authorization JWT.
+In your Flask app, configure the hub:
+
+```py
+mercure = MercureSSE(app, hub_url="http://localhost:5500/.well-known/mercure", subscriber_secret_key="SECRET", publisher_jwt="JWT")
+```
+
+## Multiplexing a single event source
+
+Set `MERCURE_TYPE_IS_TOPIC` to true so that events get the same name as the topic they originate from. This allows you to subscribe to multiple topics at once and discriminate messages based on their event name.
 
 ## Using signals as event sources
 
@@ -106,4 +143,4 @@ Start with `flask mercure --help`.
 
 ## Going to production
 
-It is recommended to use the official [Mercure.rocks hub](https://mercure.rocks/docs/hub/install) in production environments.
+Use the built-in hub as a standalone server or use the [Mercure.rocks hub](https://mercure.rocks/docs/hub/install) in production environments.
