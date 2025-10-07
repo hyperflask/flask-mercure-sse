@@ -13,6 +13,7 @@ from .cli import cli
 class MercureSSEState:
     instance: "MercureSSE"
     hub_url: str
+    public_hub_url: t.Optional[str]
     publisher_jwt: str
     authz_cookie_name: str
     type_is_topic: bool
@@ -33,9 +34,9 @@ class MercureSSE:
         if app:
             self.init_app(app, **kwargs)
 
-    def init_app(self, app, hub_url=None, publisher_jwt=None, subscriber_secret_key=None, publisher_secret_key=None,
+    def init_app(self, app, hub_url=None, public_hub_url=None, publisher_jwt=None, subscriber_secret_key=None, publisher_secret_key=None,
                  hub_allow_publish=False, hub_allow_anonymous=True, hub_subscriptions=True, hub_keepalive_interval=15,
-                 hub_reconciliation_length=500, authz_cookie_name="mercureAuthorization", type_is_topic=False):
+                 hub_reconciliation_length=500, authz_cookie_name="mercureAuthorization", type_is_topic=False, hub=None):
         if not subscriber_secret_key:
             # env var compatible with official mercure hub
             subscriber_secret_key = os.environ.get("MERCURE_SUBSCRIBER_JWT_KEY", app.config["SECRET_KEY"])
@@ -49,6 +50,7 @@ class MercureSSE:
         self.state = state = MercureSSEState(
             instance=self,
             hub_url=app.config.get("MERCURE_HUB_URL", hub_url),
+            public_hub_url=app.config.get("MERCURE_PUBLIC_HUB_URL", public_hub_url),
             publisher_jwt=app.config.get("MERCURE_PUBLISHER_JWT", publisher_jwt),
             authz_cookie_name=app.config.get("MERCURE_AUTHZ_COOKIE_NAME", authz_cookie_name),
             type_is_topic=app.config.get("MERCURE_TYPE_IS_TOPIC", type_is_topic),
@@ -69,8 +71,16 @@ class MercureSSE:
                                      mercure_topic=as_topic,
                                      mercure_subscription_topic=get_subscription_id,
                                      mercure_subscriptions=lambda topic: self.get_subscriptions(topic)["subscriptions"])
+
+        hub = app.config.get("MERCURE_HUB", hub)
+        if hub is None:
+            hub = app.debug or app.testing
+
+        if not hub and not state.hub_url:
+            state.hub_url = "http://localhost:5500/.well-known/mercure"
         
-        if not hub_url:
+        self.hub = None
+        if hub:
             self.hub = Hub(publish_subscriptions=state.hub_subscriptions,
                            reconciliation_length=state.hub_reconciliation_length,
                            logger=app.logger)
@@ -124,17 +134,16 @@ class MercureSSE:
     def delete_authz_cookie(self, response):
         return self.set_authz_cookie(response, jwt="", expires=0)
     
-    def hub_base_url(self):
-        if self.hub:
-            return "/.well-known/mercure"
-        if not self.state.hub_url:
-            raise Exception("No hub_url configured")
-        if self.state.hub_url == True:
+    def hub_base_url(self, public=True):
+        hub_url = self.state.public_hub_url if public and self.state.public_hub_url else self.state.hub_url
+        if (self.hub and not hub_url) or hub_url == True:
             return request.host_url.rstrip("/") + "/.well-known/mercure"
-        return self.state.hub_url
+        if not hub_url:
+            raise Exception("No hub_url configured")
+        return hub_url
     
-    def hub_url(self, topics=None, subscriber_jwt=None, with_subscriptions=False):
-        url = self.hub_base_url()
+    def hub_url(self, topics=None, subscriber_jwt=None, with_subscriptions=False, public=True):
+        url = self.hub_base_url(public=public)
         params = []
         if topics:
             if not isinstance(topics, (list, tuple)):
@@ -173,7 +182,7 @@ class MercureSSE:
         if self.hub:
             return self.hub.publish(topic, data, private, id, type, retry)
         if not hub_url:
-            hub_url = self.hub_base_url()
+            hub_url = self.hub_base_url(public=False)
         
         data = {
             "topic": topic,
@@ -197,15 +206,16 @@ class MercureSSE:
         if self.hub:
             subscriptions, last_event_id = self.hub.get_subscriptions(topic, subscriber)
             return format_subscriptions_response(get_subscription_id(topic, subscriber), subscriptions, last_event_id)
-        
-        if not self.state.hub_url:
+
+        hub_url = self.hub_base_url(public=False)
+        if not hub_url:
             raise Exception("No hub_url configured")
         
         topic = get_subscription_id(topic, subscriber)
         jwt = self.create_subscription_jwt(topic)
 
-        url = self.state.hub_url.rstrip("/") + topic[len("/.well-known/mercure"):]
-        r = requests.get(url, headers={"Authorization": f"Bearer {jwt}"})
+        hub_url = hub_url.rstrip("/") + topic[len("/.well-known/mercure"):]
+        r = requests.get(hub_url, headers={"Authorization": f"Bearer {jwt}"})
         r.raise_for_status()
         return r.json()
     

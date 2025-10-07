@@ -44,7 +44,8 @@ const es = new EventSource("{{ mercure_hub_url('topic') }})");
 
 | Key | Description | Default |
 | --- | --- | --- |
-| MERCURE_HUB_URL | External hub url | None |
+| MERCURE_HUB_URL | Hub URL | None |
+| MERCURE_PUBLIC_HUB_URL | Hub URL to use on the frontend | `$MERCURE_HUB_URL` |
 | MERCURE_PUBLISHER_JWT | The authorization JWT to publish on external hubs | Required when hub url is provided |
 | MERCURE_AUTHZ_COOKIE_NAME | Authorization cookie name | mercureAuthorization |
 | MERCURE_TYPE_IS_TOPIC | Whether to auto set type to topic name when no type is provided | False |
@@ -55,6 +56,19 @@ const es = new EventSource("{{ mercure_hub_url('topic') }})");
 | MERCURE_HUB_RECONCILIATION_LENGTH | Number of messages to keep across all topics for [reconciliation](https://mercure.rocks/spec#reconciliation) | 500
 | MERCURE_SUBSCRIBER_SECRET_KEY | Secret key to generate subscriber JWTs | app.config["SECRET_KEY"] |
 | MERCURE_PUBLISHER_SECRET_KEY | Secret key to generate publisher JWTs | app.config["SECRET_KEY"] |
+
+### About the hub URL
+
+If no hub URL is defined, the defaults are:
+
+ - When the embedded hub is used (ie. in debug mode), the hub url is formed using `request.host_url`
+ - Otherwise, the default is <http://localhost:5500/.well-known/mercure>
+
+If you only provide a public URL, the default will be used for "internal calls" (server to server) and the public URL will be used for public URLs.
+
+If you are using an external hub, setting `MERCURE_HUB_URL` is enough.
+
+Set `MERCURE_HUB_URL` to True to always use `request.host_url`.
 
 ## Authorization
 
@@ -102,6 +116,9 @@ The built-in hub can be used in 2 modes:
 
 It implements the full specification.
 
+The embedded hub is only enabled if `app.debug` or `app.testing` is True. **It is expected that you start the standalone server in production.**
+(You can always force the use of the embedded hub by setting `MERCURE_HUB` to True)
+
 ### In development
 
 First, ensure that a secret key is defined in your app config.
@@ -119,6 +136,8 @@ In your Flask app, configure the hub:
 ```py
 mercure = MercureSSE(app, hub_url="http://localhost:5500/.well-known/mercure", subscriber_secret_key="SECRET", publisher_jwt="JWT")
 ```
+
+Setting the hub_url is not needed if you only use the standalone hub in production. You should however set the public url to ensure the hub is accessible externally.
 
 ## Multiplexing a single event source
 

@@ -10,7 +10,7 @@ def create_app(publisher_secret=None, subscriber_secret=None, allow_anonymous=Tr
         if k.startswith("MERCURE_"):
             app.config[k] = v
 
-    mercure = MercureSSE(app, publisher_secret_key=publisher_secret, subscriber_secret_key=subscriber_secret,
+    mercure = MercureSSE(app, hub=True, publisher_secret_key=publisher_secret, subscriber_secret_key=subscriber_secret,
                hub_allow_publish=True, hub_allow_anonymous=allow_anonymous, hub_subscriptions=subscriptions)
     
     if not mercure.state.publisher_secret_key:
