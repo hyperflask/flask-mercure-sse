@@ -1,4 +1,5 @@
 from flask import Flask, request
+from dotenv import load_dotenv
 import secrets
 import os
 from flask_mercure_sse import MercureSSE
@@ -6,6 +7,10 @@ from flask_mercure_sse import MercureSSE
 
 def create_app(publisher_secret=None, subscriber_secret=None, allow_anonymous=True, cors_origins="*", subscriptions=True):
     app = Flask(__name__)
+
+    load_dotenv()
+    if "FLASK_SECRET_KEY" in os.environ:
+        app.config["SECRET_KEY"] = os.environ["FLASK_SECRET_KEY"]
     for k, v in os.environ.items():
         if k.startswith("MERCURE_"):
             app.config[k] = v
